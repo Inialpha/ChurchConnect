@@ -1,6 +1,4 @@
-"use client"
-
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Link } from "react-router-dom"
 import { MapPin, Calendar, ExternalLink, Church, Filter } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -22,9 +20,13 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
+import { useQuery } from "@tanstack/react-query"
+import api from "../../utils/api/";
+import { toast } from "sonner";
+
 
 // Sample church data
-const initialChurches = [
+const initialChurches8 = [
   {
     id: 1,
     name: "Grace Community Church",
@@ -71,20 +73,69 @@ function generateId(churches: any) {
 }
 
 export default function ChurchesPage() {
-  const [churches, setChurches] = useLocalStorage("churches", initialChurches)
+  const [churches, setChurches] = useLocalStorage("churches", [])
   const [showForm, setShowForm] = useState(false)
   const [editingChurch, setEditingChurch] = useState(null)
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedState, setSelectedState] = useState("All States")
   const [selectedLGA, setSelectedLGA] = useState("All LGAs")
+  
+  const {data: initialChurches, isLoadingChurches} = useQuery({
+    queryKey: ["churches"],
+    queryFn: async () => await api.get(`/churches`)
+      .then((res) => res.data)
+      .catch((err) => {
+        console.error("Failed to fetch churches:", err)
+        toast.error("Failed to fetch churches")
+        return []
+      }),
+    initialData: [],
+    refetchOnWindowFocus: false,
+  })
 
-  const handleAddChurch = (churchData) => {
-    const newChurch = {
-      ...churchData,
-      id: generateId(churches),
+
+
+  useEffect(() => {
+    if (initialChurches.length !== 0) {
+      setChurches(initialChurches)
     }
-    setChurches((prev) => [...prev, newChurch])
-    setShowForm(false)
+  }, [initialChurches])
+  
+
+  const handleAddChurch = async (churchData) => {
+    const removeEmptyValues = (obj: any): any => {
+      if (typeof obj !== "object" || obj === null) return obj;
+
+      return Object.fromEntries(
+        Object.entries(obj)
+          .map(([key, value]) => {
+            if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+              const cleaned = removeEmptyValues(value);
+              return [key, Object.keys(cleaned).length ? cleaned : undefined];
+            }
+            return [key, value];
+          })
+          .filter(([_, value]) => value !== null && value !== "" && value !== undefined)
+      );
+    }
+    const newChurch = removeEmptyValues(churchData)
+
+    try {
+      console.log(newChurch)
+      const res = await api.post("/churches", newChurch);
+      if (res.statusText !== "OK") {
+        toast.error("Could not add new church please try again")
+      } else {
+        toast.success("Church successfully added")
+      
+        setChurches((prev) => [...prev, newChurch])
+      }
+    } catch (error) {
+      toast.error("Could not add new church please try again")
+      console.log(error)
+    } finally {
+      setShowForm(false)
+    }
   }
 
   const handleEditChurch = (churchData) => {
